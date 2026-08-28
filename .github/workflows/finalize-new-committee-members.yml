@@ -1,0 +1,89 @@
+name: Finalize new committee members
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: ${{ !contains(github.event.head_commit.message, '[committee-finalized]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: true
+
+      - name: Prepare photos and update committee
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p committee
+
+          # The first three new photos were uploaded at repository root. Move them.
+          for f in Hema_S_Nair.jpg Jose_Manual.jpg Nimmy.jpg; do
+            if [ -f "$f" ]; then
+              mv "$f" "committee/$f"
+            fi
+          done
+
+          # Sindhu must be a real image file. The previous 2-byte placeholder is ignored.
+          if [ -f 'Sindhu_Nair_P. jpg' ] && [ "$(wc -c < 'Sindhu_Nair_P. jpg')" -gt 10000 ]; then
+            mv 'Sindhu_Nair_P. jpg' committee/Sindhu_Nair_P.jpg
+          elif [ -f 'Sindhu_Nair_P.jpg' ] && [ "$(wc -c < 'Sindhu_Nair_P.jpg')" -gt 10000 ]; then
+            mv 'Sindhu_Nair_P.jpg' committee/Sindhu_Nair_P.jpg
+          fi
+
+          # Do not change the HTML until all four images exist as non-empty files.
+          for f in Hema_S_Nair.jpg Jose_Manual.jpg Nimmy.jpg Sindhu_Nair_P.jpg; do
+            if [ ! -s "committee/$f" ]; then
+              echo "Waiting for committee/$f"
+              exit 0
+            fi
+          done
+
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('index.html')
+          s = p.read_text(encoding='utf-8')
+
+          def card(file, name):
+              return f'<div class="person"><img class="portrait" src="committee/{file}" alt="{name}"><b>{name}</b></div>'
+
+          cards = {
+              'Hema S Nair': card('Hema_S_Nair.jpg', 'Hema S Nair'),
+              'Jose Manual': card('Jose_Manual.jpg', 'Jose Manual'),
+              'Nimmy': card('Nimmy.jpg', 'Nimmy'),
+              'Sindhu Nair P': card('Sindhu_Nair_P.jpg', 'Sindhu Nair P'),
+          }
+
+          # Avoid duplicates if a prior run already inserted a member.
+          if 'alt="Hema S Nair"' not in s:
+              marker = '<div class="person"><img class="portrait" src="committee/Jyothish.jpg" alt="Jyothish"><b>Jyothish</b></div>'
+              s = s.replace(marker, cards['Hema S Nair'] + cards['Jose Manual'] + marker, 1)
+          if 'alt="Nimmy"' not in s:
+              marker = '<div class="person"><img class="portrait" src="committee/Paul.jpg" alt="Paul"><b>Paul</b></div>'
+              s = s.replace(marker, cards['Nimmy'] + marker, 1)
+          if 'alt="Sindhu Nair P"' not in s:
+              marker = '<div class="person"><img class="portrait" src="committee/Sofiya.jpg" alt="Sofiya"><b>Sofiya</b></div>'
+              s = s.replace(marker, cards['Sindhu Nair P'] + marker, 1)
+
+          p.write_text(s, encoding='utf-8')
+          PY
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          # Remove this one-time helper after successful completion.
+          rm -f .github/workflows/finalize-new-committee-members.yml
+
+          git add index.html committee .github/workflows/finalize-new-committee-members.yml
+          if git diff --cached --quiet; then
+            echo 'No changes to commit.'
+            exit 0
+          fi
+          git commit -m 'Add new committee members [committee-finalized]'
+          git push
