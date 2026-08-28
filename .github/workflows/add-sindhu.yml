@@ -1,0 +1,36 @@
+name: Add Sindhu to committee
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  add-sindhu:
+    if: ${{ !contains(github.event.head_commit.message, '[sindhu-added]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Add Sindhu card
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('index.html')
+          s = p.read_text(encoding='utf-8')
+          card = '<div class="person"><img class="portrait" src="committee/Sindhu_Nair_P.jpg" alt="Sindhu Nair P"><b>Sindhu Nair P</b></div>'
+          if 'alt="Sindhu Nair P"' not in s:
+              marker = '<div class="person"><img class="portrait" src="committee/Sofiya.jpg" alt="Sofiya"><b>Sofiya</b></div>'
+              if marker not in s:
+                  raise SystemExit('Sofiya marker not found')
+              s = s.replace(marker, card + marker, 1)
+              p.write_text(s, encoding='utf-8')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          rm -f .github/workflows/add-sindhu.yml
+          git add index.html .github/workflows/add-sindhu.yml
+          git commit -m 'Add Sindhu Nair P to committee [sindhu-added]' || exit 0
+          git push
